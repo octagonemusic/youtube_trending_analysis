@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import gaussian_kde
 import numpy as np
+from datetime import datetime, timedelta, timezone
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,7 +19,7 @@ API_KEY = os.getenv('YOUTUBE_API_KEY')
 youtube = build('youtube', 'v3', developerKey=API_KEY)
 
 # Function to get trending videos
-def get_trending_videos(region_code='US', max_results=50):
+def get_trending_videos(region_code='US', max_results=100):
     request = youtube.videos().list(
         part="snippet,contentDetails,statistics,topicDetails",
         chart="mostPopular",
@@ -40,6 +41,10 @@ def get_channel_details(channel_id):
 # Fetch trending videos
 videos = get_trending_videos()
 
+# Get current time and time 48 hours ago
+current_time = datetime.now(timezone.utc)  # Get the current time in UTC
+time_48_hours_ago = current_time - timedelta(hours=48)
+
 # Prepare data
 video_data = []
 
@@ -59,28 +64,33 @@ for video in videos:
     # Convert duration from ISO 8601 format to seconds
     duration = isodate.parse_duration(content_details.get('duration')).total_seconds()
     
-    video_data.append({
-        "Video ID": video_id,
-        "Title": snippet['title'],
-        "Published At": snippet['publishedAt'],
-        "Channel ID": channel_id,
-        "Channel Title": snippet['channelTitle'],
-        "Category ID": snippet.get('categoryId'),
-        "Tags": snippet.get('tags'),
-        "View Count": statistics.get('viewCount'),
-        "Like Count": statistics.get('likeCount'),
-        "Favorite Count": statistics.get('favoriteCount'),
-        "Comment Count": statistics.get('commentCount'),
-        "Duration (Seconds)": duration,  # Storing duration in seconds
-        "Definition": content_details.get('definition'),
-        "Caption": content_details.get('caption'),
-        "Licensed Content": content_details.get('licensedContent'),
-        "Region Restriction": content_details.get('regionRestriction'),
-        "Channel Country": channel_country,  # Handling missing country info
-        "Channel Subscriber Count": channel_details['statistics'].get('subscriberCount') if channel_details else None,
-        "Channel Video Count": channel_details['statistics'].get('videoCount') if channel_details else None,
-        "Channel View Count": channel_details['statistics'].get('viewCount') if channel_details else None,
-    })
+    # Convert publishedAt to timezone-aware datetime
+    published_at = datetime.fromisoformat(snippet['publishedAt'].replace("Z", "+00:00"))
+    
+    # Check if the video was published in the last 48 hours
+    if published_at >= time_48_hours_ago:
+        video_data.append({
+            "Video ID": video_id,
+            "Title": snippet['title'],
+            "Published At": snippet['publishedAt'],
+            "Channel ID": channel_id,
+            "Channel Title": snippet['channelTitle'],
+            "Category ID": snippet.get('categoryId'),
+            "Tags": snippet.get('tags'),
+            "View Count": statistics.get('viewCount'),
+            "Like Count": statistics.get('likeCount'),
+            "Favorite Count": statistics.get('favoriteCount'),
+            "Comment Count": statistics.get('commentCount'),
+            "Duration (Seconds)": duration,  # Storing duration in seconds
+            "Definition": content_details.get('definition'),
+            "Caption": content_details.get('caption'),
+            "Licensed Content": content_details.get('licensedContent'),
+            "Region Restriction": content_details.get('regionRestriction'),
+            "Channel Country": channel_country,  # Handling missing country info
+            "Channel Subscriber Count": channel_details['statistics'].get('subscriberCount') if channel_details else None,
+            "Channel Video Count": channel_details['statistics'].get('videoCount') if channel_details else None,
+            "Channel View Count": channel_details['statistics'].get('viewCount') if channel_details else None,
+        })
 
 # Convert data to DataFrame
 df = pd.DataFrame(video_data)
